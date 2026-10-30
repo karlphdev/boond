@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BOOND!</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Climate+Crisis:YEAR@1979..2050&family=Schibsted+Grotesk:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #555; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+  body { font: 400 14px/1.45 'Schibsted Grotesk', system-ui, sans-serif; color: #fff; }
+  a, button { color: inherit; font: inherit; }
+  a:focus-visible, button:focus-visible { outline: 1px solid #fff; outline-offset: 3px; }
+  .dim { color: rgba(255,255,255,.72); }
+
+  /* le texte tient dans les coins, le centre reste au vase */
+  .ui {
+    position: fixed; inset: 0; pointer-events: none;
+    padding: clamp(16px, 3vw, 40px);
+    display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 1fr auto auto;
+    gap: 28px 24px;
+  }
+  .ui > * { pointer-events: auto; margin: 0; }
+  .album { grid-area: 1 / 1; }
+  .listen { grid-area: 1 / 2; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .band { grid-area: 3 / 1; align-self: end; list-style: none; padding: 0; }
+  .dates { grid-area: 3 / 2; border-collapse: collapse; }
+  .foot { grid-area: 4 / 2; display: flex; gap: 20px; justify-content: flex-end; }
+
+  .album h2 { font-size: 15px; font-weight: 500; margin: 0 0 6px; }
+  .album ol { margin: 0; padding-left: 1.4em; }
+  .album li { white-space: nowrap; }
+  .album li::marker { content: counter(list-item) "  "; color: rgba(255,255,255,.72); font-variant-numeric: tabular-nums; }
+  .listen a, .foot a, .foot button { text-decoration: none; background: none; border: 0; padding: 0; cursor: pointer; }
+  .listen a:hover, .foot a:hover, .foot button:hover { text-decoration: underline; text-underline-offset: 3px; }
+  .dates td { padding: 0 0 10px; vertical-align: top; }
+  .dates td:first-child { padding-right: 20px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* le nom : s'inverse sur le vase et se consume au fil du tour (axe YEAR de Climate Crisis) ;
+     --fs est calculé en JS pour qu'il s'arrête avant le vase */
+  :root { --fs: clamp(52px, 9vw, 160px); }
+  h1 {
+    position: fixed; left: clamp(16px, 3vw, 40px); bottom: clamp(10px, 2vw, 28px); margin: 0;
+    font: 400 var(--fs)/.8 'Climate Crisis', sans-serif;
+    font-variation-settings: 'YEAR' 1979;
+    color: #fff; mix-blend-mode: difference; pointer-events: none;
+  }
+  /* en mode braise, la différence donnerait du cyan : un double crème prend le relais en fondu */
+  h1.warm { mix-blend-mode: normal; color: #fff1d8; opacity: 0; }
+  .ui { padding-bottom: calc(var(--fs) * .8 + clamp(26px, 4vw, 56px)); }
+  .foot { position: fixed; right: clamp(16px, 3vw, 40px); bottom: clamp(16px, 3vw, 40px); }
+
+  /* fil de progression du tour, bord droit */
+  .track { position: fixed; right: 18px; top: 50%; height: 22vh; width: 1px; transform: translateY(-50%);
+    background: rgba(255,255,255,.22); pointer-events: none; }
+  .track i { position: absolute; left: -2px; top: 0; width: 5px; height: 5px; border-radius: 50%; background: #fff;
+    transform: translateY(calc(var(--p, 0) * (22vh - 5px))); }
+  .track.hint i { animation: nudge 1.6s cubic-bezier(.45,0,.25,1) 1; }
+  @keyframes nudge { 50% { transform: translateY(calc(.3 * (22vh - 5px))); } }
+
+  /* curseur : anneau qui devient un point braise sur le vase */
+  @media (hover: hover) and (pointer: fine) {
+    html, a, button { cursor: none; }
+    .cur { position: fixed; left: 0; top: 0; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
+      border: 1px solid #fff; mix-blend-mode: difference; pointer-events: none; z-index: 10; opacity: 0;
+      transition: width .25s, height .25s, margin .25s, background-color .25s, border-color .25s; }
+    .cur.on { opacity: 1; }
+    .cur.link { width: 26px; height: 26px; margin: -13px 0 0 -13px; }
+    .cur::after { content: ''; position: absolute; left: 50%; top: calc(100% + 5px); width: 1px; height: 10px;
+      background: #fff; transform-origin: top; opacity: 0; transition: opacity .3s; }
+    .cur.ask::after { opacity: 1; animation: tick 2s ease-in-out infinite; }
+    @keyframes tick { 0%, 100% { transform: scaleY(.3); } 40% { transform: translateY(6px) scaleY(1); } 60% { transform: translateY(6px) scaleY(1); opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .cur.ask::after { animation: none; } }
+    .cur.vase { width: 10px; height: 10px; margin: -5px 0 0 -5px; background: #e8692b; border-color: #e8692b; mix-blend-mode: normal; }
+  }
+  .cur { display: none; }
+  @media (hover: hover) and (pointer: fine) { .cur { display: block; } }
+
+  /* ouverture : le texte arrive après l'embrasement */
+  .ui, .foot, .track { transition: opacity .8s ease; }
+  body.intro .ui, body.intro .foot, body.intro .track, body.intro h1 { opacity: 0 !important; }
+
+  dialog { max-width: 30em; border: 0; padding: 24px 28px; background: #1c1c1c; color: #fff; font: inherit; }
+  dialog::backdrop { background: rgba(0,0,0,.5); }
+  dialog p { margin: 0 0 10px; }
+
+  @media (max-width: 640px) {
+    body { font-size: 12.5px; }
+    .ui { gap: 14px 12px; grid-template-rows: auto 1fr auto auto; padding-bottom: calc(var(--fs) * .8 + 64px); }
+    .band { grid-area: 3 / 1 / 4 / 3; display: flex; gap: 4px 14px; flex-wrap: wrap; }
+    .dates { grid-area: 4 / 1 / 5 / 3; }
+    .dates td { padding-bottom: 6px; }
+    .dates td:first-child { padding-right: 12px; }
+    h1 { bottom: 48px; }
+    .foot { left: clamp(16px, 3vw, 40px); justify-content: flex-start; }
+  }
+</style>
+</head>
+<body class="intro">
+<canvas id="c" aria-label="Vase en flammes, faire défiler pour tourner autour"></canvas>
+<h1 id="name">BOOND!</h1>
+<h1 class="warm" aria-hidden="true">BOOND!</h1>
+<main class="ui">
+  <section class="album" aria-label="Album">
+    <h2>Cendre</h2>
+    <ol>
+      <li>Allumette</li>
+      <li>Fleurs blanches</li>
+      <li>Brûler lent</li>
+      <li>Cendre</li>
+    </ol>
+  </section>
+  <nav class="listen" aria-label="Écouter">
+    <a href="https://open.spotify.com/" target="_blank" rel="noopener">Spotify</a>
+    <a href="https://music.apple.com/" target="_blank" rel="noopener">Apple Music</a>
+  </nav>
+  <ul class="band" aria-label="Le groupe">
+    <li>Mira Solen <span class="dim">chant</span></li>
+    <li>Jules Abran <span class="dim">basse</span></li>
+    <li>Noa Kervel <span class="dim">batterie</span></li>
+  </ul>
+  <table class="dates" aria-label="Concerts">
+    <tr><td>21 nov</td><td>La Maroquinerie<br><span class="dim">23 rue Boyer, Paris</span></td></tr>
+    <tr><td>5 déc</td><td>Le Grand Mix<br><span class="dim">5 place Notre-Dame, Tourcoing</span></td></tr>
+    <tr><td>16 janv</td><td>Le Sucre<br><span class="dim">50 quai Rambaud, Lyon</span></td></tr>
+  </table>
+</main>
+<div class="foot">
+  <a href="mailto:contact@boond.fr">Contact</a>
+  <button type="button" onclick="legal.showModal()">Mentions légales</button>
+</div>
+<div class="track" aria-hidden="true"><i></i></div>
+<div class="cur" aria-hidden="true"></div>
+<dialog id="legal" aria-label="Mentions légales">
+  <p>BOOND! est un groupe indépendant. Site édité par le groupe, hébergé par GitHub Pages.</p>
+  <p class="dim">Photos et musique : tous droits réservés.</p>
+  <form method="dialog"><button>Fermer</button></form>
+</dialog>
+<script>
+const N = 121; // demi-tour Kling face→dos : bas = vers le dos, haut = retour vers la face
+const PX_PER_FRAME = 28; // pixels de défilement par image (plus grand = tour plus lent)
+const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const c = document.getElementById('c');
+const gl = c.getContext('webgl', { alpha: false, antialias: false });
+const frames = Array.from({ length: N }, (_, i) => {
+  const img = new Image();
+  const src = `f/${String(i + 1).padStart(3, '0')}.jpg`;
+  img.onerror = () => setTimeout(() => { img.src = src + '?r=' + Date.now(); }, 300); // serveur saturé : on réessaie
+  img.src = src;
+  return img;
+});
+
+// Défilement virtuel, avec butées face / dos.
+let target = 0, pos = 0, scrolled = false;
+const push = d => { target += d; if (!scrolled) document.querySelector('.cur').classList.remove('ask'); scrolled = true; };
+addEventListener('wheel', e => { e.preventDefault(); push(e.deltaY); }, { passive: false });
+let ty = null, tx0 = 0, ty0 = 0;
+addEventListener('touchstart', e => { ty = ty0 = e.touches[0].clientY; tx0 = e.touches[0].clientX; }, { passive: true });
+addEventListener('touchmove', e => { const y = e.touches[0].clientY; push((ty - y) * 2); ty = y; }, { passive: true });
+addEventListener('keydown', e => {
+  if (e.target.closest('a, button, dialog')) return; // espace/entrée gardent leur rôle sur les boutons
+  const step = { ArrowDown: 80, ArrowUp: -80, PageDown: 600, PageUp: -600, ' ': 600 }[e.key];
+  if (step) { e.preventDefault(); push(step); }
+});
+
+// Un seul shader : fondu entre deux images voisines, netteté, bords prolongés sans rayures,
+// zoom, profondeur souris, lumière qui vacille, ouverture qui s'embrase, couleur braise.
+const prog = gl.createProgram();
+for (const [type, src] of [
+  [gl.VERTEX_SHADER, `attribute vec2 p;
+    void main() { gl_Position = vec4(p, 0., 1.); }`],
+  [gl.FRAGMENT_SHADER, `precision mediump float;
+    uniform sampler2D t0, t1; uniform vec2 res, off, m; uniform float f, a, z, fl, rv, gs;
+    vec3 S(vec2 uv) { return mix(texture2D(t0, uv).rgb, texture2D(t1, uv).rgb, f); }
+    vec3 braise(float g) {
+      vec3 c = mix(vec3(.078,.024,.016), vec3(.549,.114,.071), smoothstep(0., .4, g));
+      c = mix(c, vec3(.910,.412,.169), smoothstep(.35, .72, g));
+      return mix(c, vec3(1.,.945,.847), smoothstep(.68, 1., g));
+    }
+    void main() {
+      float side = min(res.x, res.y);
+      const vec2 C = vec2(.5, .7); // zoom vers le cœur du bouquet, les flammes restent dans le cadre
+      vec2 uv = ((gl_FragCoord.xy - (res - side) * .5) / side - C) / z + C + off;
+      // gravité : le bouquet se penche vers la souris, le pied reste posé, le fond ne bouge pas
+      float wv = 1. - smoothstep(.8, 1.6, length((uv - vec2(.5, .58)) / vec2(.21, .40)));
+      vec2 pull = vec2(clamp((m.x - .5) / .3, -1., 1.), clamp((m.y - .58) / .4, -1., 1.) * .35);
+      uv -= pull * .04 * gs * wv * smoothstep(.02, .85, uv.y);
+      float ex = length(max(abs(uv - .5) - .5, 0.));
+      vec3 bw;
+      if (ex > 0.) {
+        // hors du carré : bord prolongé et flouté verticalement, sinon le grain fait des rayures
+        // flou perpendiculaire à l'étirement : vertical sur les côtés (paysage), horizontal en haut/bas (portrait)
+        vec2 e = clamp(uv, .002, .998), dir = abs(uv.x - .5) > .5 ? vec2(0., 1.) : vec2(1., 0.); bw = vec3(0.);
+        for (int i = -3; i <= 3; i++) bw += S(clamp(e + dir * float(i) * ex * .12, .002, .998));
+        bw /= 7.;
+        bw *= 1. - .45 * smoothstep(0., .45, ex);
+      } else {
+        vec2 d = vec2(1. / 960., 0.);
+        bw = S(uv) * 1.72 - .18 * (S(uv + d) + S(uv - d) + S(uv + d.yx) + S(uv - d.yx)); // netteté légère
+      }
+      bw = clamp(bw * fl, 0., 1.);
+      float g = dot(bw, vec3(.299,.587,.114));
+      vec3 col = mix(bw, braise(g), a);
+      float th = 1. - rv * 1.25; // ouverture : les zones les plus claires (les flammes) d'abord
+      gl_FragColor = vec4(col * smoothstep(th, th + .18, g), 1.);
+    }`],
+]) {
+  const sh = gl.createShader(type);
+  gl.shaderSource(sh, src); gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(sh));
+  gl.attachShader(prog, sh);
+}
+gl.linkProgram(prog); gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+for (const unit of [0, 1]) {
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+  for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR],
+    [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+  gl.uniform1i(gl.getUniformLocation(prog, 't' + unit), unit);
+}
+const U = Object.fromEntries(['res', 'off', 'm', 'f', 'a', 'z', 'fl', 'rv', 'gs'].map(n => [n, gl.getUniformLocation(prog, n)]));
+const loaded = i => frames[i].complete && frames[i].naturalWidth;
+const shown = [-1, -1];
+function upload(unit, i) {
+  if (shown[unit] === i || !loaded(i)) return;
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, frames[i]);
+  shown[unit] = i;
+}
+
+// Zone du sujet (repère image, y vers le haut) : bouquet + flammes en ellipse, vase en rectangle.
+// shortcut: zone fixe valable pour toute l'orbite car le vase reste centré ; masque par image si on change de vidéo.
+const onVase = (x, y) => ((x - .5) / .21) ** 2 + ((y - .58) / .40) ** 2 < 1 || (Math.abs(x - .505) < .055 && y > .02 && y < .3);
+const toSquare = (x, y) => { const side = Math.min(innerWidth, innerHeight);
+  return [(x - (innerWidth - side) / 2) / side, 1 - (y - (innerHeight - side) / 2) / side]; };
+let act = 0, wantAct = 0, zoom = 1, mouse = [.5, .5], par = [0, 0];
+let msq = [.5, .5], pullTarget = 0, gs = 0, gv = 0;
+// distance au bouquet en « rayons d'ellipse » : 1 = sur le bord, 2,2 = début de l'attraction
+const vaseDist = (x, y) => Math.hypot((x - .5) / .21, (y - .58) / .40);
+const cur = document.querySelector('.cur');
+addEventListener('pointermove', e => {
+  if (e.pointerType !== 'mouse') return;
+  cur.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
+  cur.classList.add('on');
+  const overLink = !!e.target.closest('a, button');
+  msq = toSquare(e.clientX, e.clientY);
+  wantAct = !overLink && onVase(...msq) ? 1 : 0;
+  // attire en approche ; au contact la braise prend le relais et le bouquet se relâche (rebond du ressort)
+  pullTarget = wantAct || overLink ? 0 : 1 - smoothstep(1, 2.2, vaseDist(...msq));
+  cur.classList.toggle('vase', wantAct === 1);
+  cur.classList.toggle('link', overLink);
+  mouse = [e.clientX / innerWidth, e.clientY / innerHeight];
+});
+document.addEventListener('mouseleave', () => { wantAct = 0; pullTarget = 0; cur.classList.remove('on'); });
+function smoothstep(a, b, x) { const t = Math.min(Math.max((x - a) / (b - a), 0), 1); return t * t * (3 - 2 * t); }
+// mobile : toucher le vase allume la braise, le retoucher l'éteint
+addEventListener('touchend', e => {
+  const t = e.changedTouches[0];
+  if (e.target === c && Math.hypot(t.clientX - tx0, t.clientY - ty0) < 10 && onVase(...toSquare(t.clientX, t.clientY))) wantAct = 1 - wantAct;
+});
+
+const root = document.documentElement, track = document.querySelector('.track');
+function resize() {
+  c.width = Math.round(innerWidth * devicePixelRatio);
+  c.height = Math.round(innerHeight * devicePixelRatio);
+  gl.viewport(0, 0, c.width, c.height);
+  gl.uniform2f(U.res, c.width, c.height);
+  // paysage : le nom (≈ 5,75 em de large) s'arrête avant le pied du vase
+  const side = Math.min(innerWidth, innerHeight), left = Math.min(Math.max(16, innerWidth * .03), 40);
+  const fs = innerWidth > innerHeight * 1.1 ? Math.min(160, (innerWidth / 2 - side * .09 - left) / 5.75) : Math.min(160, Math.max(52, innerWidth * .09));
+  root.style.setProperty('--fs', fs.toFixed(1) + 'px');
+}
+addEventListener('resize', resize);
+resize();
+
+const names = document.querySelectorAll('h1');
+let shownYear = 0, shownAct = -1, shownP = -1, introT0 = 0, textT0 = 0;
+let last = performance.now();
+(function loop(now) {
+  const dt = Math.min((now - last) / 1000, .1); last = now;
+  const k = 1 - Math.exp(-dt / .08); // ~0,25 s pour suivre, quelle que soit la fréquence de l'écran
+  target = Math.min(Math.max(target, 0), (N - 1) * PX_PER_FRAME);
+  pos += (target - pos) * (1 - Math.exp(-dt / .13));
+  act += (wantAct - act) * k;
+  zoom += (1 + .06 * Math.min(1, Math.abs(target - pos) / 120) - zoom) * k; // se rapproche tant qu'on scrolle
+  // ressort légèrement sous-amorti : l'attraction et le relâchement ont un petit rebond
+  if (!calm) { gv += ((pullTarget - gs) * 90 - gv * 11) * dt; gs += gv * dt; }
+  if (!calm) { par[0] += ((.5 - mouse[0]) * .02 - par[0]) * k * .5; par[1] += ((mouse[1] - .5) * .02 - par[1]) * k * .5; }
+
+  const fpos = Math.min(pos / PX_PER_FRAME, N - 1), i0 = Math.floor(fpos), i1 = Math.min(i0 + 1, N - 1);
+  upload(0, i0); upload(1, i1);
+  const p = fpos / (N - 1);
+
+  // ouverture : 1,6 s d'embrasement dès que la première image est là, puis le texte et le nom
+  if (!introT0 && shown[0] === 0) introT0 = now;
+  const rv = calm ? 1 : introT0 ? Math.min(1, (now - introT0) / 1600) : 0;
+  if (rv >= 1 && !textT0) {
+    textT0 = now; document.body.classList.remove('intro');
+    if (!scrolled) cur.classList.add('ask'); // trait qui pulse sous le curseur jusqu'au premier scroll
+    if (!calm) setTimeout(() => { if (!scrolled) track.classList.add('hint'); }, 2500); // le point glisse une fois
+  }
+  // le nom se reconstitue de « consumé » à plein, puis suit le tour
+  const e = calm ? 1 : textT0 ? Math.min(1, (now - textT0) / 900) : 0;
+  const year = Math.round(2050 + (1979 + 71 * p - 2050) * (1 - (1 - e) ** 3));
+  if (year !== shownYear) { for (const h of names) h.style.fontVariationSettings = `'YEAR' ${year}`; shownYear = year; }
+  if (Math.abs(act - shownAct) > .005) { names[1].style.opacity = act.toFixed(3); names[0].style.opacity = (1 - act).toFixed(3); shownAct = act; }
+  if (Math.abs(p - shownP) > .002) { track.style.setProperty('--p', p.toFixed(3)); shownP = p; }
+
+  if (shown[0] >= 0) {
+    const fl = calm ? 1 : 1 + .02 * (.6 * Math.sin(now * .0073) + .3 * Math.sin(now * .0131 + 1) + .1 * Math.sin(now * .0237 + 2));
+    gl.uniform1f(U.f, shown[1] === i1 ? fpos - i0 : 0);
+    gl.uniform1f(U.a, act); gl.uniform1f(U.z, zoom); gl.uniform1f(U.fl, fl); gl.uniform1f(U.rv, rv);
+    gl.uniform2f(U.off, par[0], par[1]); gl.uniform2f(U.m, msq[0], msq[1]); gl.uniform1f(U.gs, gs);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
+  requestAnimationFrame(loop);
+})(last);
+</script>
+</body>
+</html>
