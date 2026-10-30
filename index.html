@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Climate+Crisis:YEAR@1979..2050&family=Schibsted+Grotesk:wght@400;500&display=swap" rel="stylesheet">
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #555; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #555; touch-action: none; overscroll-behavior: none; } /* sinon iOS reprend le geste et coupe le scroll */
   canvas { position: fixed; inset: 0; width: 100vw; height: 100vh; }
   body { font: 400 14px/1.45 'Schibsted Grotesk', system-ui, sans-serif; color: #fff; }
   a, button { color: inherit; font: inherit; }
@@ -163,7 +163,7 @@ addEventListener('touchmove', e => {
   const y = e.touches[0].clientY, d = (ty - y) * 3, dt = (e.timeStamp - tt) / 1000;
   push(d); if (dt > 0) tv = tv * .3 + .7 * d / dt; ty = y; tt = e.timeStamp;
 }, { passive: true });
-addEventListener('touchend', e => { if (e.timeStamp - tt < 80) fling = tv; }, { passive: true }); // élan après le lâcher
+addEventListener('touchend', e => { if (e.timeStamp - tt < 80) fling = Math.max(-6000, Math.min(6000, tv)); }, { passive: true }); // élan après le lâcher, plafonné contre les pics
 addEventListener('keydown', e => {
   if (e.target.closest('a, button, dialog')) return; // espace/entrée gardent leur rôle sur les boutons
   const step = { ArrowDown: 80, ArrowUp: -80, PageDown: 600, PageUp: -600, ' ': 600 }[e.key];
