@@ -141,7 +141,7 @@
 </dialog>
 <script>
 const N = 121; // demi-tour Kling face→dos : bas = vers le dos, haut = retour vers la face
-const PX_PER_FRAME = 28; // pixels de défilement par image (plus grand = tour plus lent)
+const PX_PER_FRAME = 16; // pixels de défilement par image (plus grand = tour plus lent)
 const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const c = document.getElementById('c');
 const gl = c.getContext('webgl', { alpha: false, antialias: false });
@@ -156,10 +156,14 @@ const frames = Array.from({ length: N }, (_, i) => {
 // Défilement virtuel, avec butées face / dos.
 let target = 0, pos = 0, scrolled = false;
 const push = d => { target += d; if (!scrolled) document.querySelector('.cur').classList.remove('ask'); scrolled = true; };
-addEventListener('wheel', e => { e.preventDefault(); push(e.deltaY); }, { passive: false });
-let ty = null, tx0 = 0, ty0 = 0;
-addEventListener('touchstart', e => { ty = ty0 = e.touches[0].clientY; tx0 = e.touches[0].clientX; }, { passive: true });
-addEventListener('touchmove', e => { const y = e.touches[0].clientY; push((ty - y) * 2); ty = y; }, { passive: true });
+addEventListener('wheel', e => { e.preventDefault(); push(e.deltaY * [1, 16, innerHeight][e.deltaMode]); }, { passive: false }); // Firefox : lignes/pages → px
+let ty = null, tx0 = 0, ty0 = 0, tt = 0, tv = 0, fling = 0;
+addEventListener('touchstart', e => { ty = ty0 = e.touches[0].clientY; tx0 = e.touches[0].clientX; tt = e.timeStamp; tv = fling = 0; }, { passive: true });
+addEventListener('touchmove', e => {
+  const y = e.touches[0].clientY, d = (ty - y) * 3, dt = (e.timeStamp - tt) / 1000;
+  push(d); if (dt > 0) tv = tv * .3 + .7 * d / dt; ty = y; tt = e.timeStamp;
+}, { passive: true });
+addEventListener('touchend', e => { if (e.timeStamp - tt < 80) fling = tv; }, { passive: true }); // élan après le lâcher
 addEventListener('keydown', e => {
   if (e.target.closest('a, button, dialog')) return; // espace/entrée gardent leur rôle sur les boutons
   const step = { ArrowDown: 80, ArrowUp: -80, PageDown: 600, PageUp: -600, ' ': 600 }[e.key];
@@ -287,9 +291,10 @@ let last = performance.now();
   const dt = Math.min((now - last) / 1000, .1); last = now;
   const k = 1 - Math.exp(-dt / .08); // ~0,25 s pour suivre, quelle que soit la fréquence de l'écran
   target = Math.min(Math.max(target, 0), (N - 1) * PX_PER_FRAME);
-  pos += (target - pos) * (1 - Math.exp(-dt / .13));
+  if (fling) { target += fling * dt; fling *= Math.exp(-dt / .35); if (Math.abs(fling) < 20) fling = 0; }
+  pos += (target - pos) * (1 - Math.exp(-dt / .1));
   act += (wantAct - act) * k;
-  zoom += (1 + .06 * Math.min(1, Math.abs(target - pos) / 120) - zoom) * k; // se rapproche tant qu'on scrolle
+  zoom += (1 + .06 * Math.min(1, Math.abs(target - pos) / (PX_PER_FRAME * 4)) - zoom) * k; // se rapproche tant qu'on scrolle
   // ressort légèrement sous-amorti : l'attraction et le relâchement ont un petit rebond
   if (!calm) { gv += ((pullTarget - gs) * 90 - gv * 11) * dt; gs += gv * dt; }
   if (!calm) { par[0] += ((.5 - mouse[0]) * .02 - par[0]) * k * .5; par[1] += ((mouse[1] - .5) * .02 - par[1]) * k * .5; }
